@@ -110,10 +110,7 @@ agent: Agent = Agent(
     model=model
     )
 
-# result = Runner.run_sync(agent, "Hello, how are you? tell me about yourself. How many rooms ae available on second may 2025?", run_config=config)
 
-# print("\nCALLING AGENT\n")
-# print(result.final_output)
 @cl.on_chat_start
 async def on_chat_start():
     cl.user_session.set("history", [])
@@ -121,28 +118,49 @@ async def on_chat_start():
 
 @cl.on_message
 async def handle(message: cl.Message):
-
     history = cl.user_session.get("history")
 
     history.append({
-        "role":"user",
-        "content":message.content
+        "role": "user",
+        "content": message.content
     })
 
     msg = cl.Message(content="")
 
-    result = Runner.run_streamed(agent,f"{history[-1]}")
+    # Format history as a string to avoid passing raw dictionaries
+    def format_history(history):
+        formatted = []
+        for entry in history:
+            role = entry["role"].title()
+            content = entry["content"]
+            formatted.append(f"{role}: {content}")
+        return "\n".join(formatted)
+
+    result = Runner.run_streamed(agent, format_history(history), run_config=config)
     async for event in result.stream_events():
         if event.type == "raw_response_event" and isinstance(event.data, ResponseTextDeltaEvent):
             response = event.data.delta
-            await msg.stream_token(response)
+            if isinstance(response, str):
+                await msg.stream_token(response)
+            elif isinstance(response, dict) and "content" in response:
+                await msg.stream_token(response["content"])
+            else:
+                print(f"Unexpected response format: {response}")
+        
+        elif event.type == "final_response":
+            if hasattr(event.data, "content") and isinstance(event.data.content, str):
+                await msg.stream_token(event.data.content)
+            elif isinstance(event.data, dict) and "content" in event.data:
+                await msg.stream_token(event.data["content"])
+            else:
+                print(f"Unexpected final response format: {event.data}")
 
+    # Store only the content in history
     history.append({
-        "role":"receptionist",
-        "content":msg.content
+        "role": "receptionist",
+        "content": msg.content
     })
     cl.user_session.set("history", history)
-
 
     await msg.update()
 
