@@ -131,7 +131,7 @@ async def handle(message: cl.Message):
 
     msg = cl.Message(content="")
 
-    result = Runner.run_streamed(agent,f"{history}")
+    result = Runner.run_streamed(agent,f"{history[-1]}")
     async for event in result.stream_events():
         if event.type == "raw_response_event" and isinstance(event.data, ResponseTextDeltaEvent):
             response = event.data.delta
